@@ -1,5 +1,5 @@
 import ffmpeg
-from PIL import Image
+from PIL import Image, ImageOps, ImageEnhance
 import pytesseract
 from googletrans import Translator
 from langdetect import detect
@@ -7,10 +7,12 @@ import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
+# Set the TESSDATA_PREFIX environment variable
+os.environ['TESSDATA_PREFIX'] = '/opt/homebrew/share/'
 # Function to extract frames from the video at a specified fps
 
 
-def extract_frames(video_path, output_folder, fps=0.2):
+def extract_frames(video_path, output_folder, fps=.1):
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
     ffmpeg.input(video_path).output(
@@ -23,15 +25,25 @@ def detect_language(text):
     try:
         return detect(text)
     except:
-        return None
+        return 'zh-CN'
+
+# Function to preprocess an image to enhance text contrast
+
+
+def preprocess_image(image_path):
+    image = Image.open(image_path)
+    gray_image = ImageOps.grayscale(image)
+    inverted_image = ImageOps.invert(gray_image)
+    enhanced_image = ImageEnhance.Contrast(inverted_image).enhance(2)
+    return enhanced_image
 
 # Function to perform OCR on a single image frame
 
 
 def ocr_frame(image_path):
-    text = pytesseract.image_to_string(Image.open(image_path))
-    lang = detect_language(text)
-    return text if lang in ['zh-cn', 'zh-tw'] else None
+    image = preprocess_image(image_path)
+    text = pytesseract.image_to_string(image, lang='zh-CN')
+    return text
 
 # Function to perform OCR on all frames in parallel and write the results to a file
 
@@ -41,7 +53,7 @@ def ocr_frames_parallel(input_folder, output_file):
         image_files = [os.path.join(input_folder, img) for img in sorted(
             os.listdir(input_folder)) if img.endswith('.png')]
 
-        with ThreadPoolExecutor(max_workers=12) as executor:
+        with ThreadPoolExecutor(max_workers=16) as executor:
             results = executor.map(ocr_frame, image_files)
 
         for result in results:
@@ -74,7 +86,6 @@ def create_srt(input_file, output_file):
 
 # Main function to orchestrate the entire process
 
-
 def main(video_path):
     
     frames_folder = 'frames'
@@ -83,7 +94,7 @@ def main(video_path):
     subtitles_file = 'subtitles.srt'
 
     # Extract frames from the video
-    extract_frames(video_path, frames_folder, fps=0.2)
+    extract_frames(video_path, frames_folder, fps=1)
 
     # Perform OCR on extracted frames in parallel
     ocr_frames_parallel(frames_folder, extracted_text_file)
