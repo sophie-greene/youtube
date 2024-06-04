@@ -1,0 +1,111 @@
+<h1>YouTube Playlist Downloader</h1>
+<p>This script allows you to download videos from a YouTube playlist, handling age-restricted videos by logging
+    in with your credentials.</p>
+
+<h2>Explanation of the Script</h2>
+<p>The script uses Python and the <code>yt-dlp</code> library to download videos. Here is a breakdown of the
+    components:</p>
+<ul>
+    <li><strong>Importing necessary modules:</strong> Imports required libraries such as <code>os</code> for
+        path operations, <code>ThreadPoolExecutor</code> for concurrent downloading, <code>tqdm</code> for
+        progress bars, <code>yt_dlp</code> for downloading videos, and <code>sys</code> for handling
+        command-line arguments.</li>
+    <li><strong>download_video function:</strong> Downloads a single video. The <code>outtmpl</code> is set
+        dynamically for each video to ensure unique filenames based on their titles and indices.</li>
+    <li><strong>get_name function:</strong> Generates a unique name for each video based on its title and index
+        within the playlist.</li>
+    <li><strong>download_playlist function:</strong>
+        <ul>
+            <li>Creates the download directory if it does not exist.</li>
+            <li>Reads YouTube credentials from a file named <code>.cred</code>.</li>
+            <li>Extracts video information from the playlist URL.</li>
+            <li>Prepares a list of video URLs with their corresponding names.</li>
+            <li>Downloads videos concurrently using <code>ThreadPoolExecutor</code>.</li>
+        </ul>
+    </li>
+    <li><strong>Main block:</strong> Takes the playlist URL from the command-line arguments and calls the
+        <code>download_playlist</code> function.
+    </li>
+</ul>
+
+<h2>Script</h2>
+<pre>
+import os
+from concurrent.futures import ThreadPoolExecutor
+from tqdm import tqdm
+import yt_dlp as youtube_dl
+import sys
+
+# Function to download a single video using yt-dlp
+def download_video(video_info, download_path, ydl_opts):
+    try:
+        ydl_opts['outtmpl'] = os.path.join(download_path, video_info['name'])
+        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([video_info['url']])
+    except Exception as e:
+        print(f"Error downloading {video_info['name']}: {e}")
+
+# Function to generate unique names for videos
+def get_name(ep, title, ext):
+    return f"{title.strip()}{ep}.{ext.strip()}"
+
+# Main function to download the playlist
+def download_playlist(playlist_url, download_path='downloads', max_workers=8):
+    if not os.path.exists(download_path):
+        os.makedirs(download_path)
+
+    ydl_opts = {
+        'format': 'best',
+        'username': None,
+        'password': None,
+        'verbose': False,
+    }
+
+    # Read credentials from file
+    try:
+        with open('.cred', 'r') as file:
+            lines = file.readlines()
+            ydl_opts['username'] = lines[0].strip().split(':')[1]
+            ydl_opts['password'] = lines[1].strip().split(':')[1]
+    except FileNotFoundError:
+        print("Credentials file not found. Make sure '.cred' exists and is formatted correctly.")
+        return
+
+    # Extract video URLs from the playlist
+    try:
+        ydl = youtube_dl.YoutubeDL(ydl_opts)
+        result = ydl.extract_info(playlist_url, download=False)
+        video_urls = [{'name': get_name(i + 1, e['title'], e['video_ext']), 'url': e['url']}
+                      for i, e in enumerate(result['entries'])]
+    except Exception as e:
+        print(f"Error extracting playlist information: {e}")
+        return
+
+    # Download videos concurrently
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        list(tqdm(executor.map(lambda url: download_video(url, download_path, ydl_opts), video_urls), total=len(video_urls)))
+
+# Example usage
+if __name__ == "__main__":
+    playlist_url = sys.argv[1]
+    download_playlist(playlist_url)
+</pre>
+
+<h2>Usage</h2>
+<ol>
+    <li>Ensure your <code>.cred</code> file is correctly formatted and located in the same directory as your
+        script:
+        <pre>
+username:your_email@example.com
+password:your_password
+            </pre>
+    </li>
+    <li>Run the script from the command line with the playlist URL as an argument:
+        <pre>
+python script_name.py YOUR_PLAYLIST_URL
+            </pre>
+    </li>
+</ol>
+
+<p>This script should now download each video from the playlist with unique filenames, handling both the naming
+    and downloading process efficiently.</p>
